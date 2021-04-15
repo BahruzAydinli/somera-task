@@ -1,0 +1,38 @@
+.container {
+  width: 1100px;
+  margin: 0 auto;
+  max-width: 95%;
+}
+
+.custom_tag {
+  background-color: #fafafa;
+  border: 1px solid #d9d9d9;
+  padding: 3px 10px;
+  border-radius: 2px;
+  margin-right: 5px;
+}
+.custom_tag.multi {
+  background-color: gray;
+  color: white;
+}
+.custom_tag .anticon {
+  font-size: 10px;
+  margin-left: 5px;
+  color: #b0b0b0;
+  cursor: pointer;
+}
+
+.line_btw {
+  color: #c9c9c9;
+  margin: 0 10px;
+}
+
+.mt-10 {
+  margin-top: 10px;
+}
+.w-100 {
+  width: 100%;
+}
+.no-margin {
+  margin-bottom: 0 !important;
+}
