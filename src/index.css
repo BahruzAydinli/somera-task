@@ -10,6 +10,7 @@
   padding: 3px 10px;
   border-radius: 2px;
   margin-right: 5px;
+  cursor: pointer;
 }
 .custom_tag.multi {
   background-color: gray;
@@ -20,6 +21,13 @@
   margin-left: 5px;
   color: #b0b0b0;
   cursor: pointer;
+}
+.custom_tag.special {
+  background-color: #b8e0e3;
+  color: black;
+}
+.custom_tag.custom_tag.special .anticon {
+  /* color: black; */
 }
 
 .line_btw {
@@ -35,4 +43,9 @@
 }
 .no-margin {
   margin-bottom: 0 !important;
+}
+.align-blocks {
+  display: flex;
+  flex-wrap: wrap;
+  align-content: space-between;
 }

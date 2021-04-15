@@ -222,7 +222,7 @@ const App = () => {
     <div className="app container">
       <Row gutter={[16, 16]}>
         <Col span={24}>
-          <div className="mt-10 mb-20">
+          <div className="mt-10 mb-20 align-blocks">
             {parts.map((p, index) => {
               return !p.isspec ? (
                 <Popover
@@ -255,7 +255,7 @@ const App = () => {
                     );
                   }}
                 >
-                  <span
+                  <p
                     onMouseEnter={() => mouseEnteredToTheBlock(index)}
                     className={`custom_tag ${
                       p.value.length > 1 ? "multi" : ""
@@ -278,15 +278,13 @@ const App = () => {
                         </span>
                       );
                     })}
-                  </span>
+                  </p>
                 </Popover>
               ) : (
-                <span className="tag_block" key={index}>
-                  <span className="custom_tag">
-                    {p.value === " " ? "_" : p.value}
-                    <CloseOutlined onClick={() => handleBlockDelete(index)} />
-                  </span>
-                </span>
+                <p className="custom_tag special" key={index}>
+                  {p.value === " " ? "_" : p.value}
+                  <CloseOutlined onClick={() => handleBlockDelete(index)} />
+                </p>
               );
             })}
           </div>
