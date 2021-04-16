@@ -26,7 +26,7 @@ const App = () => {
   const [replacement] = Form.useForm();
   const [editor] = Form.useForm();
 
-  const [cursorPlace, setCursorPlace] = useState(0);
+  const [cursorPlace, setCursorPlace] = useState(-1);
   const [transfering, setTransfering] = useState(null);
 
   const refContainer = useRef(null);
@@ -47,7 +47,7 @@ const App = () => {
     },
     {
       title: "Edit",
-      key: "action",
+      key: "edit",
       render: (record) => (
         <Space size="middle">
           <Button onClick={() => editASentence(record)} type="success">
@@ -58,7 +58,7 @@ const App = () => {
     },
     {
       title: "Delete",
-      key: "action",
+      key: "edit",
       render: (record) => (
         <Space size="middle">
           <Button onClick={() => deleteASentence(record)} type="danger">
@@ -69,7 +69,7 @@ const App = () => {
     },
     {
       title: "New sentence",
-      key: "action",
+      key: "new",
       render: (record) => (
         <Space size="middle">
           <Button onClick={() => formSentence(record)} type="primary">
@@ -106,6 +106,9 @@ const App = () => {
   //to delete a sentence block
   const editASentence = (record) => {
     setEditing(record.key);
+    setCursorPlace(
+      sentences.find((s) => s.key === record.key).parts.length - 1
+    );
     setParts(sentences.find((s) => s.key === record.key).parts);
   };
 
@@ -117,9 +120,9 @@ const App = () => {
       additions.forEach((a) => {
         parts_copy.push(a);
       });
-      moveCursor(additions.length - 1);
+      moveCursor(additions.length);
     } else {
-      if (cursorPlace === 0 || cursorPlace === parts.length) {
+      if (cursorPlace === parts.length - 1) {
         additions.forEach((a) => {
           parts_copy.push(a);
         });
@@ -177,7 +180,8 @@ const App = () => {
     if (index <= cursorPlace) {
       moveCursor(-1);
     }
-    setParts(parts.filter((p, i) => i !== index));
+    let new_parts = parts.filter((p, i) => i !== index);
+    setParts(new_parts);
   };
 
   //removing words inside word blocks
@@ -228,7 +232,7 @@ const App = () => {
       new_sentences.push({
         parts,
         sentence,
-        key: sentences.length
+        key: !sentences.length
           ? 1
           : Math.max(...sentences.map((s) => s.key)) + 1,
       });
@@ -279,9 +283,6 @@ const App = () => {
         refContainer.current.focus();
         setCursorPlace(index);
       } else {
-        if (index === -1) {
-          index = 0;
-        }
         let new_parts = [...parts];
         if (index >= new_parts.length) {
           var k = index - new_parts.length + 1;
@@ -289,7 +290,11 @@ const App = () => {
             new_parts.push(undefined);
           }
         }
-        new_parts.splice(index, 0, new_parts.splice(transfering, 1)[0]);
+        new_parts.splice(
+          index < transfering ? index + 1 : index,
+          0,
+          new_parts.splice(transfering, 1)[0]
+        );
         setParts(new_parts);
       }
     }
@@ -298,7 +303,9 @@ const App = () => {
   const moveCursor = (direction) => {
     let place = cursorPlace;
     place += direction;
-    console.log(place);
+    if (place < -1) {
+      place = -1;
+    }
     setCursorPlace(place);
   };
 
@@ -342,6 +349,7 @@ const App = () => {
                               ]}
                             >
                               <Input
+                                autoComplete="off"
                                 id={`replacement${index}`}
                                 placeholder="New replacement"
                               />
@@ -429,14 +437,15 @@ const App = () => {
               ]}
             >
               <Input
+                autoComplete="off"
                 ref={refContainer}
                 onPaste={() => false}
                 onCut={() => false}
               />
             </Form.Item>
             <small>
-              Press enter to add a word block &nbsp;&nbsp; | &nbsp;&nbsp; Click
-              on blocks to add replacements.&nbsp;&nbsp; | &nbsp;&nbsp;
+              Press enter to add a word block &nbsp;&nbsp; | &nbsp;&nbsp; Hover
+              over blocks to add replacements.&nbsp;&nbsp; | &nbsp;&nbsp;
               Underscore replaces empty space.
             </small>
           </Form>
