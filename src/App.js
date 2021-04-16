@@ -2,6 +2,7 @@ import "./App.css";
 import { Table, Space, Form, Input, Popover, Button, Row, Col } from "antd";
 import { CloseOutlined } from "@ant-design/icons";
 import { useEffect, useState, useRef } from "react";
+import { DragDropContext, Droppable, Draggable } from "react-beautiful-dnd";
 import "antd/dist/antd.css";
 
 const spec_symbols = [
@@ -16,11 +17,35 @@ const spec_symbols = [
   { value: "]", margin: 2 },
   //more can be added proper to language specifications
 ];
+const getItemStyle = (isDragging, draggableStyle) => ({
+  // some basic styles to make the items look a bit nicer
+  userSelect: "none",
+  // change background colour if dragging
+  background: isDragging ? "lightgreen" : "grey",
+  // styles we need to apply on draggables
+  ...draggableStyle,
+});
+
+const getListStyle = (isDraggingOver) => ({
+  background: isDraggingOver ? "lightblue" : "lightgrey",
+  display: "flex",
+  flexWrap: "wrap",
+  overflow: "auto",
+});
+const reorder = (list, startIndex, endIndex) => {
+  const result = Array.from(list);
+  const [removed] = result.splice(startIndex, 1);
+  result.splice(endIndex, 0, removed);
+
+  return result;
+};
+
 const App = () => {
   const [parts, setParts] = useState([]);
   const [sentences, setSentences] = useState([]);
   const [editing, setEditing] = useState(null);
   const [mouseIn, setMouseIn] = useState(null);
+  const [ids, setIds] = useState([]);
 
   const [replacement] = Form.useForm();
   const [editor] = Form.useForm();
@@ -33,6 +58,14 @@ const App = () => {
       setSentences(old_sentences);
     }
   }, []);
+
+  const generateId = (prevs) => {
+    if (!prevs.length) {
+      return "1";
+    }
+    let max = Math.max(...prevs.map((id) => +id));
+    return (max + 1).toString();
+  };
 
   //sentences table columns
   const columns = [
@@ -107,17 +140,24 @@ const App = () => {
   const saveWordBlock = (values) => {
     let parts_copy = [...parts].concat(handleSpecialCharacters(values.editor));
     setParts(parts_copy);
+
     editor.resetFields();
     refContainer.current.focus();
   };
 
   //carrying special characters out of word blocks
   const handleSpecialCharacters = (block) => {
+    let ids_array = [...ids];
     if (block.length === 1) {
+      let id = generateId(ids_array);
+      ids_array.push(id);
+      setIds(ids_array);
+      let isspec = spec_symbols.map((s) => s.value).includes(block);
       return [
         {
-          value: block,
-          isspec: spec_symbols.map((s) => s.value).includes(block),
+          value: isspec ? block : [block],
+          isspec,
+          id,
         },
       ];
     }
@@ -126,7 +166,13 @@ const App = () => {
     let dontleave = false;
     for (let i = 0; i < block.length; i++) {
       if (spec_symbols.map((s) => s.value).includes(block[i])) {
-        start_parts.push({ value: block[i], isspec: true });
+        let id = generateId(ids_array);
+        ids_array.push(id);
+        start_parts.push({
+          value: block[i],
+          isspec: true,
+          id,
+        });
       } else {
         block = block.substr(i);
         dontleave = true;
@@ -135,17 +181,25 @@ const App = () => {
     }
     if (dontleave) {
       for (let j = block.length - 1; j > -1; j--) {
+        let id = generateId(ids_array);
+        ids_array.push(id);
         if (spec_symbols.map((s) => s.value).includes(block[j])) {
-          end_parts.unshift({ value: block[j], isspec: true });
+          end_parts.unshift({
+            value: block[j],
+            isspec: true,
+            id,
+          });
         } else {
           end_parts.unshift({
             value: [block.substring(0, j + 1)],
             isspec: false,
+            id,
           });
           break;
         }
       }
     }
+    setIds(ids_array);
     return start_parts.concat(end_parts);
   };
 
@@ -217,13 +271,136 @@ const App = () => {
   const mouseEnteredToTheBlock = (index) => {
     setMouseIn(index);
   };
+  const onDragEnd = (result) => {
+    // dropped outside the list
+    if (!result.destination) {
+      return;
+    }
+
+    const items = reorder(parts, result.source.index, result.destination.index);
+
+    setParts(items);
+  };
 
   return (
     <div className="app container">
       <Row gutter={[16, 16]}>
         <Col span={24}>
           <div className="mt-10 mb-20 align-blocks">
-            {parts.map((p, index) => {
+            <DragDropContext onDragEnd={onDragEnd}>
+              <Droppable droppableId="droppable" direction="horizontal">
+                {(provided, snapshot) => (
+                  <div
+                    ref={provided.innerRef}
+                    style={getListStyle(snapshot.isDraggingOver)}
+                    {...provided.droppableProps}
+                  >
+                    {parts.map((p, index) => {
+                      return !p.isspec ? (
+                        <Draggable key={p.id} draggableId={p.id} index={index}>
+                          {(provided, snapshot) => (
+                            <div
+                              ref={provided.innerRef}
+                              {...provided.draggableProps}
+                              {...provided.dragHandleProps}
+                              style={getItemStyle(
+                                snapshot.isDragging,
+                                provided.draggableProps.style
+                              )}
+                            >
+                              <Popover
+                                key={index}
+                                title={"Add new replacement"}
+                                content={() => {
+                                  return (
+                                    <Form
+                                      form={replacement}
+                                      onFinish={(e) => handleReplacementSave(e)}
+                                    >
+                                      <Form.Item
+                                        name="replacement"
+                                        rules={[
+                                          {
+                                            required: true,
+                                            message:
+                                              "Please input a replacement!",
+                                          },
+                                        ]}
+                                      >
+                                        <Input
+                                          id={`replacement${index}`}
+                                          placeholder="New replacement"
+                                        />
+                                      </Form.Item>
+                                      <Button htmlType="submit" type="primary">
+                                        Save
+                                      </Button>
+                                    </Form>
+                                  );
+                                }}
+                              >
+                                <p
+                                  onMouseEnter={() =>
+                                    mouseEnteredToTheBlock(index)
+                                  }
+                                  className={`custom_tag ${
+                                    p.value.length > 1 ? "multi" : ""
+                                  }`}
+                                >
+                                  {p.value.map((v, index2) => {
+                                    return (
+                                      <span key={index2}>
+                                        <span>{v}</span>
+                                        <CloseOutlined
+                                          onClick={() =>
+                                            handleInnerWordBlockDelete(
+                                              index,
+                                              index2
+                                            )
+                                          }
+                                        />
+                                        {index2 !== p.value.length - 1 ? (
+                                          <span className="line_btw">|</span>
+                                        ) : (
+                                          ""
+                                        )}
+                                      </span>
+                                    );
+                                  })}
+                                </p>
+                              </Popover>
+                            </div>
+                          )}
+                        </Draggable>
+                      ) : (
+                        <Draggable key={p.id} draggableId={p.id} index={index}>
+                          {(provided, snapshot) => (
+                            <div
+                              ref={provided.innerRef}
+                              {...provided.draggableProps}
+                              {...provided.dragHandleProps}
+                              style={getItemStyle(
+                                snapshot.isDragging,
+                                provided.draggableProps.style
+                              )}
+                            >
+                              <p className="custom_tag special" key={index}>
+                                {p.value === " " ? "_" : p.value}
+                                <CloseOutlined
+                                  onClick={() => handleBlockDelete(index)}
+                                />
+                              </p>
+                            </div>
+                          )}
+                        </Draggable>
+                      );
+                    })}
+                    {provided.placeholder}
+                  </div>
+                )}
+              </Droppable>
+            </DragDropContext>
+            {/* {parts.map((p, index) => {
               return !p.isspec ? (
                 <Popover
                   key={index}
@@ -286,7 +463,7 @@ const App = () => {
                   <CloseOutlined onClick={() => handleBlockDelete(index)} />
                 </p>
               );
-            })}
+            })} */}
           </div>
         </Col>
         <Col span={16}>

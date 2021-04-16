@@ -8,9 +8,8 @@
   background-color: #fafafa;
   border: 1px solid #d9d9d9;
   padding: 3px 10px;
-  border-radius: 2px;
-  margin-right: 5px;
   cursor: pointer;
+  margin-bottom: 0 !important;
 }
 .custom_tag.multi {
   background-color: gray;
@@ -25,9 +24,6 @@
 .custom_tag.special {
   background-color: #b8e0e3;
   color: black;
-}
-.custom_tag.custom_tag.special .anticon {
-  /* color: black; */
 }
 
 .line_btw {
