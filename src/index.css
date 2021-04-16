@@ -8,8 +8,9 @@
   background-color: #fafafa;
   border: 1px solid #d9d9d9;
   padding: 3px 10px;
+  border-radius: 2px;
+  margin-right: 5px;
   cursor: pointer;
-  margin-bottom: 0 !important;
 }
 .custom_tag.multi {
   background-color: gray;
@@ -24,6 +25,9 @@
 .custom_tag.special {
   background-color: #b8e0e3;
   color: black;
+}
+.custom_tag.blinking {
+  height: 30px;
 }
 
 .line_btw {
@@ -44,4 +48,26 @@
   display: flex;
   flex-wrap: wrap;
   align-content: space-between;
+}
+
+.blinking-cursor {
+  font-weight: 100;
+  font-size: 18px;
+  color: #2e3d48;
+  line-height: 10px;
+  -webkit-animation: 1s blink step-end infinite;
+  -moz-animation: 1s blink step-end infinite;
+  -ms-animation: 1s blink step-end infinite;
+  -o-animation: 1s blink step-end infinite;
+  animation: 1s blink step-end infinite;
+}
+
+@keyframes blink {
+  from,
+  to {
+    color: transparent;
+  }
+  50% {
+    color: black;
+  }
 }

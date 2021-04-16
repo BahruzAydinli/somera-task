@@ -2,7 +2,6 @@ import "./App.css";
 import { Table, Space, Form, Input, Popover, Button, Row, Col } from "antd";
 import { CloseOutlined } from "@ant-design/icons";
 import { useEffect, useState, useRef } from "react";
-import { DragDropContext, Droppable, Draggable } from "react-beautiful-dnd";
 import "antd/dist/antd.css";
 
 const spec_symbols = [
@@ -17,38 +16,18 @@ const spec_symbols = [
   { value: "]", margin: 2 },
   //more can be added proper to language specifications
 ];
-const getItemStyle = (isDragging, draggableStyle) => ({
-  // some basic styles to make the items look a bit nicer
-  userSelect: "none",
-  // change background colour if dragging
-  background: isDragging ? "lightgreen" : "grey",
-  // styles we need to apply on draggables
-  ...draggableStyle,
-});
-
-const getListStyle = (isDraggingOver) => ({
-  background: isDraggingOver ? "lightblue" : "lightgrey",
-  display: "flex",
-  flexWrap: "wrap",
-  overflow: "auto",
-});
-const reorder = (list, startIndex, endIndex) => {
-  const result = Array.from(list);
-  const [removed] = result.splice(startIndex, 1);
-  result.splice(endIndex, 0, removed);
-
-  return result;
-};
 
 const App = () => {
   const [parts, setParts] = useState([]);
   const [sentences, setSentences] = useState([]);
   const [editing, setEditing] = useState(null);
   const [mouseIn, setMouseIn] = useState(null);
-  const [ids, setIds] = useState([]);
 
   const [replacement] = Form.useForm();
   const [editor] = Form.useForm();
+
+  const [cursorPlace, setCursorPlace] = useState(0);
+  const [transfering, setTransfering] = useState(null);
 
   const refContainer = useRef(null);
 
@@ -58,14 +37,6 @@ const App = () => {
       setSentences(old_sentences);
     }
   }, []);
-
-  const generateId = (prevs) => {
-    if (!prevs.length) {
-      return "1";
-    }
-    let max = Math.max(...prevs.map((id) => +id));
-    return (max + 1).toString();
-  };
 
   //sentences table columns
   const columns = [
@@ -127,7 +98,9 @@ const App = () => {
 
   //to delete a sentence block
   const deleteASentence = (record) => {
-    setSentences(sentences.filter((s) => s.key !== record.key));
+    let new_sentences = sentences.filter((s) => s.key !== record.key);
+    setSentences(new_sentences);
+    localStorage.setItem("sentences", JSON.stringify(new_sentences));
   };
 
   //to delete a sentence block
@@ -138,26 +111,36 @@ const App = () => {
 
   //to save a word block
   const saveWordBlock = (values) => {
-    let parts_copy = [...parts].concat(handleSpecialCharacters(values.editor));
+    let additions = handleSpecialCharacters(values.editor);
+    let parts_copy = [...parts];
+    if (!parts.length) {
+      additions.forEach((a) => {
+        parts_copy.push(a);
+      });
+      moveCursor(additions.length - 1);
+    } else {
+      if (cursorPlace === 0 || cursorPlace === parts.length) {
+        additions.forEach((a) => {
+          parts_copy.push(a);
+        });
+      } else {
+        parts_copy.splice(cursorPlace + 1, 0, ...additions);
+      }
+      moveCursor(additions.length);
+    }
     setParts(parts_copy);
-
     editor.resetFields();
     refContainer.current.focus();
   };
 
   //carrying special characters out of word blocks
   const handleSpecialCharacters = (block) => {
-    let ids_array = [...ids];
     if (block.length === 1) {
-      let id = generateId(ids_array);
-      ids_array.push(id);
-      setIds(ids_array);
       let isspec = spec_symbols.map((s) => s.value).includes(block);
       return [
         {
           value: isspec ? block : [block],
           isspec,
-          id,
         },
       ];
     }
@@ -166,13 +149,7 @@ const App = () => {
     let dontleave = false;
     for (let i = 0; i < block.length; i++) {
       if (spec_symbols.map((s) => s.value).includes(block[i])) {
-        let id = generateId(ids_array);
-        ids_array.push(id);
-        start_parts.push({
-          value: block[i],
-          isspec: true,
-          id,
-        });
+        start_parts.push({ value: block[i], isspec: true });
       } else {
         block = block.substr(i);
         dontleave = true;
@@ -181,30 +158,25 @@ const App = () => {
     }
     if (dontleave) {
       for (let j = block.length - 1; j > -1; j--) {
-        let id = generateId(ids_array);
-        ids_array.push(id);
         if (spec_symbols.map((s) => s.value).includes(block[j])) {
-          end_parts.unshift({
-            value: block[j],
-            isspec: true,
-            id,
-          });
+          end_parts.unshift({ value: block[j], isspec: true });
         } else {
           end_parts.unshift({
             value: [block.substring(0, j + 1)],
             isspec: false,
-            id,
           });
           break;
         }
       }
     }
-    setIds(ids_array);
     return start_parts.concat(end_parts);
   };
 
   //removing word blocks
   const handleBlockDelete = (index) => {
+    if (index <= cursorPlace) {
+      moveCursor(-1);
+    }
     setParts(parts.filter((p, i) => i !== index));
   };
 
@@ -253,7 +225,13 @@ const App = () => {
       new_sentences.find((s) => s.key === editing).parts = parts;
       new_sentences.find((s) => s.key === editing).sentence = sentence;
     } else {
-      new_sentences.push({ parts, sentence, key: sentences.length + 1 });
+      new_sentences.push({
+        parts,
+        sentence,
+        key: sentences.length
+          ? 1
+          : Math.max(...sentences.map((s) => s.key)) + 1,
+      });
     }
     setSentences(new_sentences);
     localStorage.setItem("sentences", JSON.stringify(new_sentences));
@@ -263,6 +241,7 @@ const App = () => {
   //reseting sentence editor
   const resetEditor = () => {
     setEditing(null);
+    setCursorPlace(0);
     setParts([]);
     editor.resetFields();
   };
@@ -271,199 +250,170 @@ const App = () => {
   const mouseEnteredToTheBlock = (index) => {
     setMouseIn(index);
   };
-  const onDragEnd = (result) => {
-    // dropped outside the list
-    if (!result.destination) {
-      return;
+
+  const allowDrop = (ev) => {
+    ev.preventDefault();
+  };
+
+  const drag = (ev) => {
+    if (ev.target.dataset.drop) {
+      setTransfering(+ev.target.dataset.drop);
+    } else {
+      setTransfering(null);
     }
+  };
 
-    const items = reorder(parts, result.source.index, result.destination.index);
+  const drop = (ev) => {
+    ev.preventDefault();
+    var element = document.getElementById(`tag${ev.target.dataset.drop}`);
+    if (element) {
+      let after =
+        ev.clientX >
+        (element.getBoundingClientRect().right +
+          element.getBoundingClientRect().left) /
+          2
+          ? 0
+          : -1;
+      let index = +ev.target.dataset.drop + after;
+      if (transfering === null) {
+        refContainer.current.focus();
+        setCursorPlace(index);
+      } else {
+        if (index === -1) {
+          index = 0;
+        }
+        let new_parts = [...parts];
+        if (index >= new_parts.length) {
+          var k = index - new_parts.length + 1;
+          while (k--) {
+            new_parts.push(undefined);
+          }
+        }
+        new_parts.splice(index, 0, new_parts.splice(transfering, 1)[0]);
+        setParts(new_parts);
+      }
+    }
+  };
 
-    setParts(items);
+  const moveCursor = (direction) => {
+    let place = cursorPlace;
+    place += direction;
+    console.log(place);
+    setCursorPlace(place);
   };
 
   return (
     <div className="app container">
       <Row gutter={[16, 16]}>
         <Col span={24}>
-          <div className="mt-10 mb-20 align-blocks">
-            <DragDropContext onDragEnd={onDragEnd}>
-              <Droppable droppableId="droppable" direction="horizontal">
-                {(provided, snapshot) => (
-                  <div
-                    ref={provided.innerRef}
-                    style={getListStyle(snapshot.isDraggingOver)}
-                    {...provided.droppableProps}
-                  >
-                    {parts.map((p, index) => {
-                      return !p.isspec ? (
-                        <Draggable key={p.id} draggableId={p.id} index={index}>
-                          {(provided, snapshot) => (
-                            <div
-                              ref={provided.innerRef}
-                              {...provided.draggableProps}
-                              {...provided.dragHandleProps}
-                              style={getItemStyle(
-                                snapshot.isDragging,
-                                provided.draggableProps.style
-                              )}
+          <div
+            onDrop={drop}
+            onDragOver={allowDrop}
+            className="mt-10 mb-20 align-blocks"
+          >
+            {!parts.length || cursorPlace === -1 ? (
+              <p
+                draggable="true"
+                onDragStart={drag}
+                className="custom_tag blinking"
+              >
+                <span className="blinking-cursor">|</span>
+              </p>
+            ) : null}
+            {parts.map((p, index) => {
+              return (
+                <div style={{ display: "flex" }} data-id={index} key={index}>
+                  {!p.isspec ? (
+                    <Popover
+                      title={"Add new replacement"}
+                      content={() => {
+                        return (
+                          <Form
+                            form={replacement}
+                            onFinish={(e) => handleReplacementSave(e)}
+                          >
+                            <Form.Item
+                              name="replacement"
+                              rules={[
+                                {
+                                  required: true,
+                                  message: "Please input a replacement!",
+                                },
+                              ]}
                             >
-                              <Popover
-                                key={index}
-                                title={"Add new replacement"}
-                                content={() => {
-                                  return (
-                                    <Form
-                                      form={replacement}
-                                      onFinish={(e) => handleReplacementSave(e)}
-                                    >
-                                      <Form.Item
-                                        name="replacement"
-                                        rules={[
-                                          {
-                                            required: true,
-                                            message:
-                                              "Please input a replacement!",
-                                          },
-                                        ]}
-                                      >
-                                        <Input
-                                          id={`replacement${index}`}
-                                          placeholder="New replacement"
-                                        />
-                                      </Form.Item>
-                                      <Button htmlType="submit" type="primary">
-                                        Save
-                                      </Button>
-                                    </Form>
-                                  );
-                                }}
-                              >
-                                <p
-                                  onMouseEnter={() =>
-                                    mouseEnteredToTheBlock(index)
-                                  }
-                                  className={`custom_tag ${
-                                    p.value.length > 1 ? "multi" : ""
-                                  }`}
-                                >
-                                  {p.value.map((v, index2) => {
-                                    return (
-                                      <span key={index2}>
-                                        <span>{v}</span>
-                                        <CloseOutlined
-                                          onClick={() =>
-                                            handleInnerWordBlockDelete(
-                                              index,
-                                              index2
-                                            )
-                                          }
-                                        />
-                                        {index2 !== p.value.length - 1 ? (
-                                          <span className="line_btw">|</span>
-                                        ) : (
-                                          ""
-                                        )}
-                                      </span>
-                                    );
-                                  })}
-                                </p>
-                              </Popover>
-                            </div>
-                          )}
-                        </Draggable>
-                      ) : (
-                        <Draggable key={p.id} draggableId={p.id} index={index}>
-                          {(provided, snapshot) => (
-                            <div
-                              ref={provided.innerRef}
-                              {...provided.draggableProps}
-                              {...provided.dragHandleProps}
-                              style={getItemStyle(
-                                snapshot.isDragging,
-                                provided.draggableProps.style
-                              )}
-                            >
-                              <p className="custom_tag special" key={index}>
-                                {p.value === " " ? "_" : p.value}
-                                <CloseOutlined
-                                  onClick={() => handleBlockDelete(index)}
-                                />
-                              </p>
-                            </div>
-                          )}
-                        </Draggable>
-                      );
-                    })}
-                    {provided.placeholder}
-                  </div>
-                )}
-              </Droppable>
-            </DragDropContext>
-            {/* {parts.map((p, index) => {
-              return !p.isspec ? (
-                <Popover
-                  key={index}
-                  title={"Add new replacement"}
-                  content={() => {
-                    return (
-                      <Form
-                        form={replacement}
-                        onFinish={(e) => handleReplacementSave(e)}
+                              <Input
+                                id={`replacement${index}`}
+                                placeholder="New replacement"
+                              />
+                            </Form.Item>
+                            <Button htmlType="submit" type="primary">
+                              Save
+                            </Button>
+                          </Form>
+                        );
+                      }}
+                    >
+                      <p
+                        data-drop={index}
+                        onDragStart={drag}
+                        draggable="true"
+                        id={`tag${index}`}
+                        onMouseEnter={() => mouseEnteredToTheBlock(index)}
+                        className={`custom_tag ${
+                          p.value.length > 1 ? "multi" : ""
+                        }`}
                       >
-                        <Form.Item
-                          name="replacement"
-                          rules={[
-                            {
-                              required: true,
-                              message: "Please input a replacement!",
-                            },
-                          ]}
-                        >
-                          <Input
-                            id={`replacement${index}`}
-                            placeholder="New replacement"
-                          />
-                        </Form.Item>
-                        <Button htmlType="submit" type="primary">
-                          Save
-                        </Button>
-                      </Form>
-                    );
-                  }}
-                >
-                  <p
-                    onMouseEnter={() => mouseEnteredToTheBlock(index)}
-                    className={`custom_tag ${
-                      p.value.length > 1 ? "multi" : ""
-                    }`}
-                  >
-                    {p.value.map((v, index2) => {
-                      return (
-                        <span key={index2}>
-                          <span>{v}</span>
-                          <CloseOutlined
-                            onClick={() =>
-                              handleInnerWordBlockDelete(index, index2)
-                            }
-                          />
-                          {index2 !== p.value.length - 1 ? (
-                            <span className="line_btw">|</span>
-                          ) : (
-                            ""
-                          )}
-                        </span>
-                      );
-                    })}
-                  </p>
-                </Popover>
-              ) : (
-                <p className="custom_tag special" key={index}>
-                  {p.value === " " ? "_" : p.value}
-                  <CloseOutlined onClick={() => handleBlockDelete(index)} />
-                </p>
+                        {p.value.map((v, index2) => {
+                          return (
+                            <span
+                              data-drop={index}
+                              data-id={index2}
+                              key={`sub${index2}`}
+                            >
+                              <span data-drop={index}>{v}</span>
+                              <CloseOutlined
+                                data-drop={index}
+                                onClick={() =>
+                                  handleInnerWordBlockDelete(index, index2)
+                                }
+                              />
+                              {index2 !== p.value.length - 1 ? (
+                                <span className="line_btw">|</span>
+                              ) : (
+                                ""
+                              )}
+                            </span>
+                          );
+                        })}
+                      </p>
+                    </Popover>
+                  ) : (
+                    <p
+                      data-drop={index}
+                      onDragStart={drag}
+                      draggable="true"
+                      className="custom_tag special"
+                      id={`tag${index}`}
+                    >
+                      {p.value === " " ? "_" : p.value}
+                      <CloseOutlined
+                        data-drop={index}
+                        onClick={() => handleBlockDelete(index)}
+                      />
+                    </p>
+                  )}
+                  {cursorPlace === index ? (
+                    <p
+                      draggable="true"
+                      onDragStart={drag}
+                      className="custom_tag blinking"
+                    >
+                      <span className="blinking-cursor">|</span>
+                    </p>
+                  ) : null}
+                </div>
               );
-            })} */}
+            })}
           </div>
         </Col>
         <Col span={16}>
@@ -485,8 +435,8 @@ const App = () => {
               />
             </Form.Item>
             <small>
-              Press enter to add a word block &nbsp;&nbsp; | &nbsp;&nbsp; Hover
-              over blocks to add replacements.&nbsp;&nbsp; | &nbsp;&nbsp;
+              Press enter to add a word block &nbsp;&nbsp; | &nbsp;&nbsp; Click
+              on blocks to add replacements.&nbsp;&nbsp; | &nbsp;&nbsp;
               Underscore replaces empty space.
             </small>
           </Form>
